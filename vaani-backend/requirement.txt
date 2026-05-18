@@ -1,0 +1,40 @@
+# ----------------------------
+# Core Backend
+# ----------------------------
+fastapi==0.111.0
+uvicorn==0.30.1
+python-dotenv==1.0.1
+pydantic==2.7.4
+
+# ----------------------------
+# STT (Whisper)
+# ----------------------------
+openai-whisper==20231117
+ffmpeg-python==0.2.0
+soundfile==0.12.1
+
+# ----------------------------
+# LLM (Google Gemini)
+# ----------------------------
+google-generativeai==0.7.2
+
+# ----------------------------
+# RAG (LangChain + FAISS)
+# ----------------------------
+langchain==0.2.16
+langchain-community==0.2.16
+langchain-huggingface==0.0.3
+faiss-cpu==1.8.0.post1
+sentence-transformers==2.7.0
+
+# ----------------------------
+# TTS (Camb.ai)
+# ----------------------------
+camb-ai==0.1.15
+
+# ----------------------------
+# Utilities
+# ----------------------------
+numpy==1.26.4
+tqdm==4.66.4
+requests==2.32.3

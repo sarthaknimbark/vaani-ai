@@ -3,7 +3,7 @@ uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 python-dotenv==1.0.0
 websockets==12.0
-whisper-openai==20231117
+openai-whisper
 torch==2.1.0
 torchvision==0.16.0
 torchaudio==2.1.0
@@ -13,6 +13,6 @@ langchain-huggingface==0.0.3
 faiss-cpu==1.7.4
 sentence-transformers==2.2.2
 google-generativeai==0.8.3
-camb-ai==0.1.0
+camb-sdk
 numpy==1.24.3
 scipy==1.11.3
