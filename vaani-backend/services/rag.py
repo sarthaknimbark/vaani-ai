@@ -29,7 +29,7 @@ def get_context(query):
             print("FAISS database not initialized, returning generic context")
             return "Restaurant knowledge base not available. Please try again."
         
-        docs = db.similarity_search(query, k=3)
+        docs = db.similarity_search(query, k=2)
         
         if not docs:
             print("No documents found for query:", query)

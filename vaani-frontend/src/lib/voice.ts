@@ -1,6 +1,35 @@
 export const VOICE_WS_URL =
   import.meta.env.VITE_VOICE_WS_URL ?? "ws://localhost:8000/ws/voice";
 
+/** Faster AI voice playback in the browser (1.0 = normal). */
+export const TTS_PLAYBACK_RATE = 1.32;
+
+const GREETED_SESSION_KEY = "vaani_greeted";
+
+export function hasBeenGreeted(): boolean {
+  try {
+    return sessionStorage.getItem(GREETED_SESSION_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function markGreeted(): void {
+  try {
+    sessionStorage.setItem(GREETED_SESSION_KEY, "1");
+  } catch {
+    /* private mode */
+  }
+}
+
+export function buildVoiceWsUrl(): string {
+  if (hasBeenGreeted()) {
+    const sep = VOICE_WS_URL.includes("?") ? "&" : "?";
+    return `${VOICE_WS_URL}${sep}greet=0`;
+  }
+  return VOICE_WS_URL;
+}
+
 export const MIN_AUDIO_BYTES = 1500;
 export const RECORDER_TIMESLICE_MS = 100;
 
@@ -71,7 +100,9 @@ export function waitForVoiceReady(
       if (typeof event.data !== "string") return;
       try {
         const data = JSON.parse(event.data) as { type?: string };
-        if (data.type === "audio_complete") {
+        if (data.type === "audio_complete" || data.type === "session_ready") {
+          if (data.type === "audio_complete") markGreeted();
+          else markGreeted();
           cleanup();
           resolve();
         }
@@ -115,6 +146,7 @@ export function attachVoiceMessageHandler(
           role?: "user" | "ai";
           text?: string;
           timestamp?: string;
+          message?: string;
         };
         if (
           data.type === "transcript" &&
@@ -128,7 +160,19 @@ export function attachVoiceMessageHandler(
             text: data.text,
             timestamp: data.timestamp,
           });
+        } else if (data.type === "session_ready") {
+          markGreeted();
+          handlers.onReady?.();
         } else if (data.type === "audio_complete") {
+          markGreeted();
+          handlers.onProcessingEnd?.();
+          handlers.onReady?.();
+        } else if (data.type === "error" && data.message) {
+          handlers.onError?.(
+            typeof data.message === "string"
+              ? data.message
+              : "Voice processing failed"
+          );
           handlers.onProcessingEnd?.();
           handlers.onReady?.();
         }
@@ -150,7 +194,8 @@ export function attachVoiceMessageHandler(
 
 export async function sendAudioOnSocket(
   ws: WebSocket,
-  blob: Blob
+  blob: Blob,
+  convertToWav: (b: Blob) => Promise<Blob> = async (b) => b
 ): Promise<void> {
   if (ws.readyState !== WebSocket.OPEN) {
     throw new Error("Voice connection is not open");
@@ -158,7 +203,15 @@ export async function sendAudioOnSocket(
   if (blob.size < MIN_AUDIO_BYTES) {
     throw new Error("Recording too short — speak a bit longer and try again");
   }
-  const buffer = await blobToArrayBuffer(blob);
+
+  let payload = blob;
+  try {
+    payload = await convertToWav(blob);
+  } catch (err) {
+    console.warn("WAV conversion failed, sending original format:", err);
+  }
+
+  const buffer = await blobToArrayBuffer(payload);
   ws.send(buffer);
 }
 
@@ -166,7 +219,7 @@ export async function getMicrophoneStream(): Promise<MediaStream> {
   return navigator.mediaDevices.getUserMedia({
     audio: {
       echoCancellation: true,
-      noiseSuppression: true,
+      noiseSuppression: false,
       autoGainControl: true,
     },
   });

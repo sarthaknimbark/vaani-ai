@@ -2,9 +2,9 @@ import os
 from camb.client import CambAI
 from dotenv import load_dotenv
 from camb.types import StreamTtsOutputConfiguration
+
 load_dotenv()
 
-# Initialize with error handling
 API_KEY = os.getenv("CAMB_API_KEY")
 if not API_KEY:
     print("Warning: CAMB_API_KEY not found in environment variables")
@@ -16,23 +16,32 @@ except Exception as e:
     print(f"Error initializing CambAI: {e}")
     client = None
 
-def stream_tts(text):
-    """Stream text to speech audio"""
+# mars-flash = lowest latency; fast=True adds quick-delivery hint for instruct-capable paths
+FAST_SPEECH_MODEL = "mars-flash"
+FAST_VOICE_PREFIX = ""
+
+
+def stream_tts(text, fast: bool = False):
+    """Stream text to speech audio."""
     if not text or not text.strip():
         print("TTS: Empty text provided")
         return
-    
+
     if client is None:
         print("TTS: CambAI client not initialized")
         return
-    
+
+    spoken = text.strip()
+    if fast and len(spoken) < 200:
+        spoken = f"{FAST_VOICE_PREFIX}{spoken}"
+
     try:
-        print(f"TTS: Generating audio for text ({len(text)} chars)")
+        print(f"TTS: Generating audio ({len(spoken)} chars, fast={fast})")
         for chunk in client.text_to_speech.tts(
-            text=text,
+            text=spoken,
             language="en-us",
             voice_id=147342,
-            speech_model="mars-flash",
+            speech_model=FAST_SPEECH_MODEL,
             output_configuration=StreamTtsOutputConfiguration(format="wav"),
         ):
             if chunk:
@@ -41,6 +50,6 @@ def stream_tts(text):
     except Exception as e:
         print(f"TTS Error: {e}")
         import traceback
+
         traceback.print_exc()
-        # Return empty to avoid crashing the websocket loop
         return

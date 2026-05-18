@@ -1,36 +1,6 @@
 [
   {
     "role": "user",
-    "text": "can you give me detail of plans for motor insurance",
-    "timestamp": "2026-04-13T11:30:04.709782"
-  },
-  {
-    "role": "ai",
-    "text": "Sorry, I don\u2019t have that information. However, I can tell you that our motor insurance plans cover damage, theft, and third-party liability. You can visit our website or mobile app to compare different plans, choose coverage that suits you, and purchase online.",
-    "timestamp": "2026-04-13T11:30:04.710790"
-  },
-  {
-    "role": "user",
-    "text": "what about health insuranmce",
-    "timestamp": "2026-04-13T11:30:42.893323"
-  },
-  {
-    "role": "ai",
-    "text": "To answer your question about health insurance, I need to clarify that our previous conversation was about motor insurance. However, I can provide you with information about health insurance.\n\nHealth insurance plans at Esanad cover medical expenses, hospitalization, and some preventive care. Our network includes top hospitals and medical centers in UAE. Co-pay and deductibles may apply, depending on the plan you choose. You can visit our website or mobile app to compare different health insurance plans and purchase online.",
-    "timestamp": "2026-04-13T11:30:42.894286"
-  },
-  {
-    "role": "user",
-    "text": "give me your mail id for communication",
-    "timestamp": "2026-04-13T11:32:12.140682"
-  },
-  {
-    "role": "ai",
-    "text": "Sorry, I don\u2019t have that information.",
-    "timestamp": "2026-04-13T11:32:12.141688"
-  },
-  {
-    "role": "user",
     "text": "LP;';'",
     "timestamp": "2026-05-18T17:06:35.050885"
   },
@@ -58,5 +28,35 @@
     "role": "ai",
     "text": "I can help you with insurance-related queries, such as motor, health, travel, and home insurance. You can ask me about coverage, pricing, claims, or any other insurance-related questions. I'll do my best to provide you with accurate and helpful information.",
     "timestamp": "2026-05-18T17:18:56.869674"
+  },
+  {
+    "role": "user",
+    "text": "Hey, Cher. How can you help me?",
+    "timestamp": "2026-05-18T17:58:34.801563"
+  },
+  {
+    "role": "ai",
+    "text": "I can help you with insurance-related queries, such as motor, health, travel, and home insurance. You can ask me about coverage, pricing, claims, or any other insurance-related questions. I'll do my best to provide you with accurate and helpful information.",
+    "timestamp": "2026-05-18T17:58:34.801563"
+  },
+  {
+    "role": "user",
+    "text": "I want to buy motor insurance.",
+    "timestamp": "2026-05-18T17:59:21.352345"
+  },
+  {
+    "role": "ai",
+    "text": "I'd be happy to help you with motor insurance. \n\nAt Esanad, we offer motor insurance that covers damage, theft, and third-party liability. You can choose from various plans to suit your needs. Our prices range from AED 500 to AED 5,000+ yearly depending on coverage. Would you like to know more about our plans or get a quote?",
+    "timestamp": "2026-05-18T17:59:21.352345"
+  },
+  {
+    "role": "user",
+    "text": "Hey there, I want to buy health insurance. Give me all the telepathic insurance.",
+    "timestamp": "2026-05-18T18:03:46.405184"
+  },
+  {
+    "role": "ai",
+    "text": "Sorry, I don\u2019t have that information.",
+    "timestamp": "2026-05-18T18:03:46.405184"
   }
 ]

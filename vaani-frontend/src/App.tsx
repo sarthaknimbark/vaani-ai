@@ -5,13 +5,16 @@ import { AISphere } from "./components/AISphere";
 import { IconSidebar } from "./components/IconSidebar";
 import { StatusPill } from "./components/StatusPill";
 import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
+import { recordingBlobToWav } from "./lib/audioEncode";
 import {
   attachVoiceMessageHandler,
   createMediaRecorder,
   getMicrophoneStream,
+  buildVoiceWsUrl,
+  hasBeenGreeted,
   RECORDER_TIMESLICE_MS,
   sendAudioOnSocket,
-  VOICE_WS_URL,
+  TTS_PLAYBACK_RATE,
   waitForVoiceReady,
   type VoiceTranscript,
 } from "./lib/voice";
@@ -53,6 +56,7 @@ function App() {
   const detachVoiceHandlerRef = useRef<(() => void) | null>(null);
   const ttsChunksRef = useRef<Uint8Array[]>([]);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const skipGreetingConnectionRef = useRef(false);
 
   const currentConversation = conversations.find(
     (c) => c.id === currentConversationId
@@ -237,6 +241,7 @@ function App() {
       if (data.audio_url) {
         setIsAiSpeaking(true);
         const audio = new Audio(data.audio_url);
+        audio.playbackRate = TTS_PLAYBACK_RATE;
         audio.onended = () => setIsAiSpeaking(false);
         audio.onerror = () => setIsAiSpeaking(false);
         audio.play().catch(() => setIsAiSpeaking(false));
@@ -259,6 +264,7 @@ function App() {
     const url = URL.createObjectURL(blob);
     ttsAudioRef.current?.pause();
     const audio = new Audio(url);
+    audio.playbackRate = TTS_PLAYBACK_RATE;
     ttsAudioRef.current = audio;
     setIsAiSpeaking(true);
     audio.onended = () => {
@@ -308,10 +314,10 @@ function App() {
           void playTtsResponse();
           voiceReadyRef.current = true;
           setLoading(false);
-          // One-shot: close after user message was processed (greeting = turn 1, reply = turn 2)
+          const closeAfter = skipGreetingConnectionRef.current ? 1 : 2;
           if (
             voiceSessionModeRef.current === "oneshot" &&
-            audioTurnRef.current >= 2
+            audioTurnRef.current >= closeAfter
           ) {
             detachVoiceHandlerRef.current?.();
             detachVoiceHandlerRef.current = null;
@@ -339,7 +345,8 @@ function App() {
       voiceSessionModeRef.current = "oneshot";
     }
 
-    const ws = new WebSocket(VOICE_WS_URL);
+    skipGreetingConnectionRef.current = hasBeenGreeted();
+    const ws = new WebSocket(buildVoiceWsUrl());
     wsRef.current = ws;
     audioTurnRef.current = 0;
 
@@ -378,7 +385,7 @@ function App() {
           await waitForVoiceReady(ws);
         }
         voiceReadyRef.current = false;
-        await sendAudioOnSocket(ws, audioBlob);
+        await sendAudioOnSocket(ws, audioBlob, recordingBlobToWav);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Failed to send voice";

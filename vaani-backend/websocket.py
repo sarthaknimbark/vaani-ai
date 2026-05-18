@@ -18,33 +18,40 @@ router = APIRouter()
 # In-memory call log storage
 call_logs = []
 
-GREETING_TEXT = "Hello there! How can I help you?"
+GREETING_TEXT = "Hi! How can I help you today?"
 
 @router.websocket("/ws/voice")
 async def voice_chat(websocket: WebSocket):
     await websocket.accept()
-    
+
+    # greet=0 → skip greeting (frontend sets after first connect this session)
+    should_greet = websocket.query_params.get("greet", "1") != "0"
+
     # Initialize conversation memory for this session
     memory = ConversationMemory()
 
-    # Send AI greeting immediately when call starts
-    try:
+    if should_greet:
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "transcript",
+                "role": "ai",
+                "text": GREETING_TEXT,
+                "timestamp": datetime.now().isoformat()
+            }))
+
+            for chunk in stream_tts(GREETING_TEXT, fast=True):
+                await websocket.send_bytes(chunk)
+
+            await websocket.send_text(json.dumps({
+                "type": "audio_complete"
+            }))
+        except Exception as e:
+            print(f"Greeting error: {e}")
+    else:
         await websocket.send_text(json.dumps({
-            "type": "transcript",
-            "role": "ai",
-            "text": GREETING_TEXT,
+            "type": "session_ready",
             "timestamp": datetime.now().isoformat()
         }))
-
-        # Stream greeting TTS audio
-        for chunk in stream_tts(GREETING_TEXT):
-            await websocket.send_bytes(chunk)
-
-        await websocket.send_text(json.dumps({
-            "type": "audio_complete"
-        }))
-    except Exception as e:
-        print(f"Greeting error: {e}")
 
     while True:
         try:
@@ -73,6 +80,10 @@ async def voice_chat(websocket: WebSocket):
             # Skip empty or failed transcriptions
             if not user_text or user_text == "[Could not transcribe audio]":
                 print("Skipping empty or failed transcription")
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "message": "Could not detect speech. Speak clearly for 2–3 seconds and try again.",
+                }))
                 continue
 
             # Send user's transcribed text as JSON
@@ -114,7 +125,7 @@ async def voice_chat(websocket: WebSocket):
             })
 
             # 4. TTS stream - send audio bytes
-            for chunk in stream_tts(ai_response):
+            for chunk in stream_tts(ai_response, fast=True):
                 await websocket.send_bytes(chunk)
 
             # Signal audio stream complete
@@ -184,7 +195,7 @@ async def text_chat(chat_message: ChatMessage):
         audio_url = None
         try:
             audio_chunks = []
-            for chunk in stream_tts(ai_response):
+            for chunk in stream_tts(ai_response, fast=True):
                 if chunk:
                     audio_chunks.append(chunk)
 
