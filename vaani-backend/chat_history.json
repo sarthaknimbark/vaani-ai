@@ -1,36 +1,6 @@
 [
   {
     "role": "user",
-    "text": "hello",
-    "timestamp": "2026-04-13T11:29:00.353707"
-  },
-  {
-    "role": "ai",
-    "text": "Hello, how can I assist you today?",
-    "timestamp": "2026-04-13T11:29:00.353707"
-  },
-  {
-    "role": "user",
-    "text": "i want to buy motor insurance",
-    "timestamp": "2026-04-13T11:29:17.834179"
-  },
-  {
-    "role": "ai",
-    "text": "To buy motor insurance, you can visit our website or mobile app. Compare different plans, choose coverage that suits you, and purchase online. Our team will guide you through the process.",
-    "timestamp": "2026-04-13T11:29:17.835178"
-  },
-  {
-    "role": "user",
-    "text": "can i buy this from here",
-    "timestamp": "2026-04-13T11:29:39.644408"
-  },
-  {
-    "role": "ai",
-    "text": "You're referring to motor insurance. Yes, you can buy motor insurance from our platform. Visit our website or mobile app to compare plans, choose coverage, and purchase online.",
-    "timestamp": "2026-04-13T11:29:39.645374"
-  },
-  {
-    "role": "user",
     "text": "can you give me detail of plans for motor insurance",
     "timestamp": "2026-04-13T11:30:04.709782"
   },
@@ -58,5 +28,35 @@
     "role": "ai",
     "text": "Sorry, I don\u2019t have that information.",
     "timestamp": "2026-04-13T11:32:12.141688"
+  },
+  {
+    "role": "user",
+    "text": "LP;';'",
+    "timestamp": "2026-05-18T17:06:35.050885"
+  },
+  {
+    "role": "ai",
+    "text": "Sorry, I don\u2019t have that information.",
+    "timestamp": "2026-05-18T17:06:35.052871"
+  },
+  {
+    "role": "user",
+    "text": "'\\]",
+    "timestamp": "2026-05-18T17:08:38.697662"
+  },
+  {
+    "role": "ai",
+    "text": "Sorry, I don\u2019t have that information.",
+    "timestamp": "2026-05-18T17:08:38.698660"
+  },
+  {
+    "role": "user",
+    "text": "HOW CAN YOU HELP ME ?",
+    "timestamp": "2026-05-18T17:18:56.867703"
+  },
+  {
+    "role": "ai",
+    "text": "I can help you with insurance-related queries, such as motor, health, travel, and home insurance. You can ask me about coverage, pricing, claims, or any other insurance-related questions. I'll do my best to provide you with accurate and helpful information.",
+    "timestamp": "2026-05-18T17:18:56.869674"
   }
 ]
