@@ -5,6 +5,16 @@ import { AISphere } from "./components/AISphere";
 import { IconSidebar } from "./components/IconSidebar";
 import { StatusPill } from "./components/StatusPill";
 import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
+import {
+  attachVoiceMessageHandler,
+  createMediaRecorder,
+  getMicrophoneStream,
+  RECORDER_TIMESLICE_MS,
+  sendAudioOnSocket,
+  VOICE_WS_URL,
+  waitForVoiceReady,
+  type VoiceTranscript,
+} from "./lib/voice";
 import type { AIStatus, ChatMessage, Conversation, UIMode } from "./types";
 
 function App() {
@@ -33,6 +43,16 @@ function App() {
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const callDurationRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentMessagesRef = useRef<ChatMessage[]>([]);
+  const currentConversationIdRef = useRef<string | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const mimeTypeRef = useRef("");
+  const voiceReadyRef = useRef(false);
+  const isCallActiveRef = useRef(false);
+  const voiceSessionModeRef = useRef<"oneshot" | "session">("oneshot");
+  const audioTurnRef = useRef(0);
+  const detachVoiceHandlerRef = useRef<(() => void) | null>(null);
+  const ttsChunksRef = useRef<Uint8Array[]>([]);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const currentConversation = conversations.find(
     (c) => c.id === currentConversationId
@@ -40,6 +60,8 @@ function App() {
   const currentMessages = currentConversation?.messages ?? [];
 
   currentMessagesRef.current = currentMessages;
+  currentConversationIdRef.current = currentConversationId;
+  isCallActiveRef.current = isCallActive;
 
   const isMicActive =
     isRecording || isCallActive || isConnecting;
@@ -117,6 +139,7 @@ function App() {
 
         setConversations([conv]);
         setCurrentConversationId(lastConvId);
+        currentConversationIdRef.current = lastConvId;
       }
     } catch (err) {
       console.error("Failed to load conversations:", err);
@@ -134,6 +157,7 @@ function App() {
     };
     setConversations((prev) => [newConversation, ...prev]);
     setCurrentConversationId(newId);
+    currentConversationIdRef.current = newId;
     setError(null);
     setUiMode("chat");
   };
@@ -224,175 +248,304 @@ function App() {
     }
   };
 
-  const connectAndSendAudio = (audioBlob: Blob) => {
-    if (!currentConversationId) return;
-
-    setLoading(true);
-    const ws = new WebSocket("ws://localhost:8000/ws/voice");
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      ws.send(audioBlob);
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        if (typeof event.data === "string") {
-          const data = JSON.parse(event.data);
-          if (data.type === "transcript") {
-            const newMsg: ChatMessage = {
-              role: data.role,
-              text: data.text,
-              timestamp: data.timestamp,
-            };
-            const convId = currentConversationId;
-            const msgs = [...currentMessagesRef.current, newMsg];
-            updateConversationMessages(convId, msgs);
-            if (data.role === "ai") setIsAiSpeaking(true);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to parse WebSocket message:", err);
-      }
-    };
-
-    ws.onclose = () => {
-      setLoading(false);
+  const playTtsResponse = useCallback(async () => {
+    const parts = ttsChunksRef.current;
+    ttsChunksRef.current = [];
+    if (parts.length === 0) {
       setIsAiSpeaking(false);
+      return;
+    }
+    const blob = new Blob(parts as BlobPart[], { type: "audio/wav" });
+    const url = URL.createObjectURL(blob);
+    ttsAudioRef.current?.pause();
+    const audio = new Audio(url);
+    ttsAudioRef.current = audio;
+    setIsAiSpeaking(true);
+    audio.onended = () => {
+      setIsAiSpeaking(false);
+      URL.revokeObjectURL(url);
     };
+    audio.onerror = () => {
+      setIsAiSpeaking(false);
+      URL.revokeObjectURL(url);
+    };
+    try {
+      await audio.play();
+    } catch {
+      setIsAiSpeaking(false);
+      URL.revokeObjectURL(url);
+    }
+  }, []);
 
-    ws.onerror = () => {
-      setError("Voice connection error");
-      setLoading(false);
-    };
-  };
+  const handleVoiceTranscript = useCallback(
+    (msg: VoiceTranscript) => {
+      const convId = currentConversationIdRef.current;
+      if (!convId) return;
+      const newMsg: ChatMessage = {
+        role: msg.role,
+        text: msg.text,
+        timestamp: msg.timestamp,
+      };
+      const msgs = [...currentMessagesRef.current, newMsg];
+      updateConversationMessages(convId, msgs);
+    },
+    [updateConversationMessages]
+  );
+
+  const bindVoiceSocket = useCallback(
+    (ws: WebSocket) => {
+      detachVoiceHandlerRef.current?.();
+      detachVoiceHandlerRef.current = attachVoiceMessageHandler(ws, {
+        onTranscript: (msg) => {
+          handleVoiceTranscript(msg);
+          if (msg.role === "ai") setIsAiSpeaking(true);
+        },
+        onAudioChunk: (buf) => {
+          ttsChunksRef.current.push(new Uint8Array(buf));
+        },
+        onProcessingEnd: () => {
+          audioTurnRef.current += 1;
+          void playTtsResponse();
+          voiceReadyRef.current = true;
+          setLoading(false);
+          // One-shot: close after user message was processed (greeting = turn 1, reply = turn 2)
+          if (
+            voiceSessionModeRef.current === "oneshot" &&
+            audioTurnRef.current >= 2
+          ) {
+            detachVoiceHandlerRef.current?.();
+            detachVoiceHandlerRef.current = null;
+            wsRef.current?.close();
+            wsRef.current = null;
+            voiceReadyRef.current = false;
+            audioTurnRef.current = 0;
+          }
+        },
+        onReady: () => {
+          voiceReadyRef.current = true;
+        },
+        onError: (message) => setError(message),
+      });
+    },
+    [handleVoiceTranscript, playTtsResponse]
+  );
+
+  const openVoiceSocket = useCallback(async (): Promise<WebSocket> => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      return wsRef.current;
+    }
+
+    if (!isCallActiveRef.current) {
+      voiceSessionModeRef.current = "oneshot";
+    }
+
+    const ws = new WebSocket(VOICE_WS_URL);
+    wsRef.current = ws;
+    audioTurnRef.current = 0;
+
+    await new Promise<void>((resolve, reject) => {
+      ws.onopen = () => resolve();
+      ws.onerror = () => reject(new Error("Voice connection failed"));
+      ws.onclose = () => reject(new Error("Voice connection closed"));
+    });
+
+    bindVoiceSocket(ws);
+    voiceReadyRef.current = false;
+    await waitForVoiceReady(ws);
+    voiceReadyRef.current = true;
+    return ws;
+  }, [bindVoiceSocket]);
+
+  const sendRecordedAudio = useCallback(
+    async (audioBlob: Blob) => {
+      const convId = currentConversationIdRef.current;
+      if (!convId) {
+        setError("Create or select a chat first");
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      ttsChunksRef.current = [];
+
+      if (!isCallActiveRef.current) {
+        voiceSessionModeRef.current = "oneshot";
+      }
+
+      try {
+        const ws = await openVoiceSocket();
+        if (!voiceReadyRef.current) {
+          await waitForVoiceReady(ws);
+        }
+        voiceReadyRef.current = false;
+        await sendAudioOnSocket(ws, audioBlob);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to send voice";
+        setError(message);
+        voiceReadyRef.current = true;
+        setLoading(false);
+        if (!isCallActiveRef.current) {
+          wsRef.current?.close();
+          wsRef.current = null;
+        }
+      }
+    },
+    [openVoiceSocket]
+  );
 
   const startRecording = async () => {
-    if (!currentConversationId) {
+    const convId = currentConversationIdRef.current;
+    if (!convId) {
       setError("Create or select a chat first");
       return;
     }
 
+    if (recorderRef.current?.state === "recording") return;
+
     try {
       setError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      setAudioStream(stream);
+      let stream = streamRef.current;
+      if (!stream || stream.getTracks().every((t) => t.readyState === "ended")) {
+        stream = await getMicrophoneStream();
+        streamRef.current = stream;
+        setAudioStream(stream);
+      }
 
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : "audio/wav";
-      const recorder = new MediaRecorder(stream, { mimeType });
+      chunksRef.current = [];
+      const { recorder, mimeType } = createMediaRecorder(stream);
+      mimeTypeRef.current = mimeType;
       recorderRef.current = recorder;
 
-      const chunks: Blob[] = [];
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
+        if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
-      recorder.onstop = async () => {
-        const audioBlob = new Blob(chunks, { type: mimeType });
-        stream.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-        setAudioStream(null);
-        connectAndSendAudio(audioBlob);
-      };
-
-      recorder.start();
+      recorder.start(RECORDER_TIMESLICE_MS);
       setIsRecording(true);
-      setUiMode("voice");
+      if (!isCallActive) setUiMode("voice");
     } catch (err) {
-      setError("Microphone access denied or unavailable");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Microphone access denied or unavailable"
+      );
       console.error(err);
     }
   };
 
-  const stopRecording = () => {
-    if (recorderRef.current?.state === "recording") {
-      recorderRef.current.stop();
+  const stopRecording = async () => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state !== "recording") {
+      setIsRecording(false);
+      return;
     }
+
     setIsRecording(false);
+
+    await new Promise<void>((resolve) => {
+      recorder.onstop = () => resolve();
+      try {
+        recorder.requestData();
+      } catch {
+        /* ignore */
+      }
+      recorder.stop();
+    });
+
+    recorderRef.current = null;
+
+    const audioBlob = new Blob(chunksRef.current, {
+      type: mimeTypeRef.current || "audio/webm",
+    });
+    chunksRef.current = [];
+
+    const keepStreamForCall = isCallActiveRef.current;
+    if (!keepStreamForCall) {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+      setAudioStream(null);
+    }
+
+    await sendRecordedAudio(audioBlob);
   };
 
   const toggleRecording = () => {
-    if (isRecording) stopRecording();
+    if (isRecording) void stopRecording();
     else void startRecording();
   };
 
   const startCall = async () => {
-    if (!currentConversationId) {
+    const convId = currentConversationIdRef.current;
+    if (!convId) {
       setError("Create or select a chat first");
       return;
     }
+
     setIsConnecting(true);
     setCallDuration(0);
     setIsAiSpeaking(false);
     setUiMode("voice");
+    setError(null);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceSessionModeRef.current = "session";
+      isCallActiveRef.current = true;
+
+      const stream = await getMicrophoneStream();
       streamRef.current = stream;
       setAudioStream(stream);
 
-      const ws = new WebSocket("ws://localhost:8000/ws/voice");
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        setTimeout(() => {
-          setIsConnecting(false);
-          setIsCallActive(true);
-        }, 1200);
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          if (typeof event.data === "string") {
-            const data = JSON.parse(event.data);
-            if (data.type === "transcript") {
-              setIsAiSpeaking(data.role === "ai");
-              const newMsg: ChatMessage = {
-                role: data.role,
-                text: data.text,
-                timestamp: data.timestamp,
-              };
-              const convId = currentConversationId;
-              const msgs = [...currentMessagesRef.current, newMsg];
-              updateConversationMessages(convId, msgs);
-            }
-          }
-        } catch (err) {
-          console.error("Parse error:", err);
-        }
-      };
-
-      ws.onerror = () => {
-        setError("Failed to connect");
-        setIsConnecting(false);
-        setIsCallActive(false);
-      };
-    } catch {
-      setError("Microphone access denied");
+      await openVoiceSocket();
       setIsConnecting(false);
+      setIsCallActive(true);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Microphone access denied"
+      );
+      setIsConnecting(false);
+      setIsCallActive(false);
+      isCallActiveRef.current = false;
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      setAudioStream(null);
+      wsRef.current?.close();
+      wsRef.current = null;
     }
   };
 
   const endCall = () => {
     if (callDurationRef.current) clearInterval(callDurationRef.current);
+    if (recorderRef.current?.state === "recording") {
+      recorderRef.current.onstop = null;
+      recorderRef.current.stop();
+    }
+    recorderRef.current = null;
+    chunksRef.current = [];
+    detachVoiceHandlerRef.current?.();
+    detachVoiceHandlerRef.current = null;
+    ttsAudioRef.current?.pause();
+    ttsChunksRef.current = [];
     wsRef.current?.close();
+    wsRef.current = null;
+    voiceReadyRef.current = false;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     setAudioStream(null);
     setIsCallActive(false);
+    isCallActiveRef.current = false;
+    voiceSessionModeRef.current = "oneshot";
     setIsConnecting(false);
+    setIsRecording(false);
     setCallDuration(0);
     setIsAiSpeaking(false);
+    setLoading(false);
     setUiMode("chat");
   };
 
   const ensureConversation = () => {
-    if (!currentConversationId) {
-      createNewChat();
-    }
+    if (currentConversationIdRef.current) return;
+    createNewChat();
   };
 
   return (
@@ -568,7 +721,26 @@ function App() {
                 isMicActive={isMicActive}
               />
               {!isConnecting && (
-                <p className="voice-duration">{formatDuration(callDuration)}</p>
+                <>
+                  <p className="voice-duration">{formatDuration(callDuration)}</p>
+                  <p className="voice-hint">
+                    Tap the microphone to speak, tap again to send
+                  </p>
+                  <button
+                    type="button"
+                    className={`input-btn input-btn--mic voice-overlay-mic ${isRecording ? "input-btn--mic-active" : ""}`}
+                    onClick={toggleRecording}
+                    disabled={loading && !isRecording}
+                    title={isRecording ? "Stop and send" : "Start speaking"}
+                    aria-pressed={isRecording}
+                  >
+                    {isRecording ? (
+                      <MicOff size={22} strokeWidth={1.75} />
+                    ) : (
+                      <Mic size={22} strokeWidth={1.75} />
+                    )}
+                  </button>
+                </>
               )}
               <button type="button" className="btn-end-call" onClick={endCall}>
                 <PhoneOff size={18} strokeWidth={1.75} />

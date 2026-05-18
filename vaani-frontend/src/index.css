@@ -997,6 +997,20 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.voice-hint {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-align: center;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.voice-overlay-mic {
+  width: 56px;
+  height: 56px;
+  border-radius: 20px;
+}
+
 .btn-end-call {
   display: inline-flex;
   align-items: center;

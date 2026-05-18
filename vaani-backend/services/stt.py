@@ -10,9 +10,19 @@ def speech_to_text(audio_bytes):
         print(f"STT: Audio too small ({len(audio_bytes)} bytes), skipping")
         return ""
 
-    # Browser MediaRecorder sends WebM/Opus format, save with correct extension
-    # so ffmpeg (used by whisper internally) can decode it properly
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
+    # Pick extension from container magic bytes for ffmpeg/whisper
+    suffix = ".webm"
+    if len(audio_bytes) >= 4:
+        if audio_bytes[:4] == b"\x1aE\xdf\xa3":
+            suffix = ".webm"
+        elif audio_bytes[4:8] == b"ftyp" or audio_bytes[:4] in (b"\x00\x00\x00", b"ftyp"):
+            suffix = ".mp4"
+        elif audio_bytes[:4] == b"OggS":
+            suffix = ".ogg"
+        elif audio_bytes[:4] == b"RIFF":
+            suffix = ".wav"
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
         f.write(audio_bytes)
         path = f.name
 

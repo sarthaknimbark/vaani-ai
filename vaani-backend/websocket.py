@@ -48,8 +48,18 @@ async def voice_chat(websocket: WebSocket):
 
     while True:
         try:
-            print("Waiting for audio bytes...")
-            audio_bytes = await websocket.receive_bytes()
+            print("Waiting for audio...")
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                print("Client disconnected")
+                break
+
+            audio_bytes = message.get("bytes")
+            if not audio_bytes:
+                if message.get("text"):
+                    print(f"Ignoring unexpected text frame: {message['text'][:80]}")
+                continue
+
             print(f"Received audio: {len(audio_bytes)} bytes")
 
             if len(audio_bytes) == 0:
